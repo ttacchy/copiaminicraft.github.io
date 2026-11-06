@@ -95,8 +95,11 @@
   // ---------- jogador ----------
   var p = { x: 0, y: 0, w: 24, h: 56, vx: 0, vy: 0, ground: false, face: 1, walk: 0 };
   var keys = { l: false, r: false, j: false };
-  var hotbar = [2, 3, 4, 6, 5, 1, 7], sel = 0;
-  var mouse = { x: 0, y: 0 }, action = null, cd = 0, touchMode = 'mine';
+  var hotbar = [2, 3, 4, 6, 5, 7, 1], sel = 0;
+  var inv = { 1: 0, 2: 20, 3: 0, 4: 0, 5: 0, 6: 10, 7: 0 };
+  var HARD = { 1: 0.4, 2: 0.35, 3: 1.1, 4: 0.8, 5: 0.15, 6: 0.7, 7: 1.5 };
+  var mode = 'mine', mineT = 0, mineKey = '', coyote = 0, buf = 0, jPrev = false;
+  var mouse = { x: 0, y: 0 }, action = null, cd = 0;
   var time = 0.2, elapsed = 0, cam = { x: 0, y: 0 };
 
   function hit() {
@@ -110,13 +113,24 @@
     var dir = (keys.r ? 1 : 0) - (keys.l ? 1 : 0);
     p.vx = dir * 210;
     if (dir) p.face = dir;
-    if (keys.j && p.ground) { p.vy = -520; p.ground = false; }
+
+    // pulo com tolerância (coyote time, buffer e pulo curto)
+    if (keys.j && !jPrev) buf = 0.12;
+    jPrev = keys.j; buf -= dt;
+    coyote = p.ground ? 0.1 : coyote - dt;
+    if ((buf > 0 || (keys.j && p.ground)) && coyote > 0) { p.vy = -520; p.ground = false; coyote = 0; buf = 0; }
+    if (!keys.j && p.vy < -200) p.vy += 3200 * dt;
     p.vy = Math.min(900, p.vy + 1800 * dt);
 
+    // movimento horizontal (com degrau automático)
     p.x += p.vx * dt;
     var h = hit();
-    if (h) { if (p.vx > 0) p.x = h.x * T - p.w; else p.x = (h.x + 1) * T; }
+    if (h) {
+      if (p.vx > 0) p.x = h.x * T - p.w; else p.x = (h.x + 1) * T;
+      if (p.ground && dir) { var oy = p.y; p.y -= T + 2; var free = !hit(); p.y = oy; if (free) p.vy = -400; }
+    }
 
+    // movimento vertical
     p.y += p.vy * dt;
     p.ground = false;
     h = hit();
@@ -129,7 +143,19 @@
     time = (time + dt / 300) % 1;
     elapsed += dt;
     cd -= dt;
-    if (action && cd <= 0) { doAction(action); cd = action === 'mine' ? 0.14 : 0.2; }
+
+    // quebrar (segurando) e construir
+    if (action === 'mine') {
+      var mt = target(), mid = get(mt.x, mt.y), mk = mt.x + ',' + mt.y;
+      if (mt.ok && mid && mid !== 8) {
+        if (mk !== mineKey) { mineKey = mk; mineT = 0; }
+        mineT += dt;
+        if (mineT >= HARD[mid]) { set(mt.x, mt.y, 0); inv[mid]++; mineT = 0; mineKey = ''; }
+      } else { mineKey = ''; mineT = 0; }
+    } else {
+      mineKey = ''; mineT = 0;
+      if (action === 'place' && cd <= 0) { doAction('place'); cd = 0.2; }
+    }
 
     cam.x = Math.max(0, Math.min(WW * T - W, p.x + p.w / 2 - W / 2));
     cam.y = Math.max(0, Math.min(WH * T - H, p.y + p.h / 2 - H / 2));
@@ -147,12 +173,10 @@
     var t = target();
     if (!t.ok) return;
     var id = get(t.x, t.y);
-    if (a === 'mine') {
-      if (id && id !== 8) set(t.x, t.y, 0);
-    } else if (id === 0) {
+    if (a === 'place' && id === 0 && inv[hotbar[sel]] > 0) {
       var overlap = t.x * T < p.x + p.w && (t.x + 1) * T > p.x && t.y * T < p.y + p.h && (t.y + 1) * T > p.y;
       var support = get(t.x + 1, t.y) || get(t.x - 1, t.y) || get(t.x, t.y + 1) || get(t.x, t.y - 1);
-      if (!overlap && support) set(t.x, t.y, hotbar[sel]);
+      if (!overlap && support) { set(t.x, t.y, hotbar[sel]); inv[hotbar[sel]]--; }
     }
   }
 
@@ -197,6 +221,14 @@
     ctx.strokeStyle = t.ok ? 'rgba(255,255,255,.9)' : 'rgba(255,80,80,.7)';
     ctx.lineWidth = 2;
     ctx.strokeRect(t.x * T - cx + 1, t.y * T - cy + 1, T - 2, T - 2);
+    if (mode === 'place' && t.ok && get(t.x, t.y) === 0) {
+      ctx.globalAlpha = 0.45; ctx.drawImage(tex[hotbar[sel]], t.x * T - cx, t.y * T - cy, T, T); ctx.globalAlpha = 1;
+    }
+    if (mineKey === t.x + ',' + t.y && mineT > 0 && get(t.x, t.y)) {
+      var pr = Math.min(1, mineT / HARD[get(t.x, t.y)]);
+      ctx.fillStyle = 'rgba(0,0,0,' + (0.15 + pr * 0.5).toFixed(2) + ')'; ctx.fillRect(t.x * T - cx, t.y * T - cy, T, T);
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(t.x * T - cx + 2, t.y * T - cy + T - 6, (T - 4) * pr, 3);
+    }
 
     drawPlayer();
 
@@ -209,18 +241,20 @@
       var sx2 = bx + i * (S + G);
       ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillRect(sx2, by, S, S);
       ctx.drawImage(tex[hotbar[i]], sx2 + 6, by + 6, 32, 32);
+      if (!inv[hotbar[i]]) { ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(sx2, by, S, S); }
       ctx.strokeStyle = i === sel ? '#ffffff' : 'rgba(255,255,255,.25)';
       ctx.lineWidth = i === sel ? 3 : 1;
       ctx.strokeRect(sx2 + 1, by + 1, S - 2, S - 2);
       ctx.fillStyle = '#fff'; ctx.font = '11px sans-serif'; ctx.textAlign = 'left';
       ctx.fillText(String(i + 1), sx2 + 4, by + 12);
+      ctx.textAlign = 'right'; ctx.fillText(String(inv[hotbar[i]]), sx2 + S - 4, by + S - 5); ctx.textAlign = 'left';
     }
 
     if (elapsed < 25) {
       ctx.globalAlpha = Math.min(1, (25 - elapsed) / 4);
       ctx.fillStyle = '#fff'; ctx.font = '14px "Trebuchet MS", sans-serif'; ctx.textAlign = 'left';
       ctx.shadowColor = '#000'; ctx.shadowBlur = 4;
-      ctx.fillText('A D mover · Espaço pular · clique esquerdo quebra · clique direito constrói · 1 a 7 escolhe o bloco', 14, 26);
+      ctx.fillText('A D mover · Espaço pular · Segure o clique para quebrar · E alterna Quebrar e Construir · C fabrica tábuas · 1 a 7 bloco', 14, 26);
       ctx.shadowBlur = 0; ctx.globalAlpha = 1;
     }
   }
@@ -257,8 +291,7 @@
     e.preventDefault(); setMouse(e);
     var hb = hotbarAt();
     if (hb >= 0) { sel = hb; return; }
-    if (e.pointerType === 'mouse') action = e.button === 2 ? 'place' : 'mine';
-    else action = touchMode;
+    if (e.pointerType === 'mouse' && e.button === 2) action = 'place'; else action = mode;
     cd = 0;
   });
   cv.addEventListener('pointermove', setMouse);
@@ -275,6 +308,8 @@
     else if (k === 'd' || k === 'arrowright') keys.r = true;
     else if (k === 'w' || k === ' ' || k === 'arrowup') { keys.j = true; e.preventDefault(); }
     else if (k >= '1' && k <= '7') sel = parseInt(k, 10) - 1;
+    else if (k === 'e') setMode(mode === 'mine' ? 'place' : 'mine');
+    else if (k === 'c') craft();
   });
   document.addEventListener('keyup', function (e) {
     var k = e.key.toLowerCase();
@@ -291,11 +326,15 @@
     });
   }
   hold('bl', 'l'); hold('br', 'r'); hold('bj', 'j');
-  var bm = document.getElementById('bm');
-  bm.addEventListener('click', function () {
-    touchMode = touchMode === 'mine' ? 'place' : 'mine';
-    bm.textContent = touchMode === 'mine' ? 'Quebrar' : 'Construir';
-  });
+
+  // botões de modo e fabricação
+  var bm = document.getElementById('bm'), bb = document.getElementById('bb'), bf = document.getElementById('bf');
+  function setMode(m) { mode = m; bm.classList.toggle('on', m === 'mine'); bb.classList.toggle('on', m === 'place'); }
+  function craft() { if (inv[4] > 0) { inv[4]--; inv[6] += 4; } }
+  bm.addEventListener('click', function () { setMode('mine'); });
+  bb.addEventListener('click', function () { setMode('place'); });
+  bf.addEventListener('click', craft);
+  setMode('mine');
 
   // ---------- início ----------
   gen();
