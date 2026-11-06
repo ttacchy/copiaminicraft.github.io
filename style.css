@@ -24,7 +24,7 @@ canvas {
   touch-action: none;
 }
 
-/* botões de modo (sempre visíveis) */
+/* botão Fabricar (canto superior direito) */
 .mode { position: absolute; top: 12px; right: 12px; display: flex; gap: 8px; }
 .mode button {
   font: inherit;
@@ -39,32 +39,37 @@ canvas {
   touch-action: manipulation;
   cursor: pointer;
 }
-.mode button.on { background: #3a8f3a; }
 
-/* controles na tela (celular) */
+/* botões de baixo: Quebrar, Construir e Pular */
 .pad {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 70px;
-  display: none;
-  justify-content: space-between;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
   padding: 0 14px;
   pointer-events: none;
 }
 .pad div { display: flex; gap: 10px; pointer-events: auto; }
 .pad button {
   font: inherit;
-  font-size: 1.2rem;
+  font-size: 1rem;
   font-weight: 700;
-  min-width: 60px;
-  height: 56px;
-  padding: 0 14px;
+  min-width: 52px;
+  height: 52px;
+  padding: 0 12px;
   border: 0;
   border-radius: 12px;
   color: #fff;
   background: rgba(0, 0, 0, .5);
   touch-action: manipulation;
+  cursor: pointer;
 }
+.pad button.on, .mode button.on { background: #3a8f3a; }
 
-@media (pointer: coarse) { .pad { display: flex; } }
+/* setas só aparecem em celulares e tablets */
+.pad .mv { display: none; margin-right: auto; }
+@media (pointer: coarse) { .pad .mv { display: flex; } }
